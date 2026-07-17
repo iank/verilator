@@ -4,6 +4,9 @@
 // SPDX-FileCopyrightText: 2026 Ian Kilgore
 // SPDX-License-Identifier: CC0-1.0
 
+// Reproduces a C++ compile failure: the two generated headers each depend on
+// a struct defined in the other, producing an unresolvable include cycle.
+
 module t (
     input clk
 );
@@ -12,18 +15,8 @@ module t (
   int cyc = 0;
 
   always_ff @(posedge clk) i <= ~i;
-  holder_mod #(
-      .P(1)
-  ) ha_inst (
-      .clk(clk),
-      .din(i),
-      .o(a)
-  );
-  branch_b bb_inst (
-      .clk(clk),
-      .din(i),
-      .o(b)
-  );
+  holder_mod #(.P(1)) ha_inst (.clk(clk), .din(i), .o(a));
+  branch_b bb_inst (.clk(clk), .din(i), .o(b));
 
   always @(posedge clk) begin
     cyc <= cyc + 1;
@@ -41,13 +34,7 @@ module branch_b (
     output logic o
 );
   /*verilator no_inline_module*/
-  holder_mod #(
-      .P(0)
-  ) h_inst (
-      .clk(clk),
-      .din(din),
-      .o(o)
-  );
+  holder_mod #(.P(0)) h_inst (.clk(clk), .din(din), .o(o));
 endmodule
 
 module holder_mod #(
@@ -57,26 +44,14 @@ module holder_mod #(
     input logic din,
     output logic o
 );
-  typedef struct {logic f[2];} s_t;
+  typedef struct {logic f;} s_t;
 
-  s_t v;
   logic u_out, s_out;
 
-  user_mod #(
-      .T(s_t)
-  ) u_inst (
-      .clk(clk),
-      .din(din),
-      .dout(u_out)
-  );
-  shared_mod sh_inst (
-      .clk(clk),
-      .din(din),
-      .sout(s_out)
-  );
+  user_mod #(.T(s_t)) u_inst (.clk(clk), .din(din), .dout(u_out));
+  shared_mod sh_inst (.clk(clk), .din(din), .sout(s_out));
 
-  always_ff @(posedge clk) v.f[0] <= u_out ^ s_out ^ P[0];
-  assign o = v.f[0];
+  assign o = u_out ^ s_out ^ P[0];
 endmodule
 
 module user_mod #(
@@ -86,12 +61,9 @@ module user_mod #(
     input logic din,
     output logic dout
 );
-  T shreg[2];
-  always_ff @(posedge clk) begin
-    shreg[0].f[0] <= din;
-    shreg[1] <= shreg[0];
-  end
-  assign dout = shreg[1].f[0];
+  T v;
+  always_ff @(posedge clk) v.f <= din;
+  assign dout = v.f;
 endmodule
 
 module shared_mod (

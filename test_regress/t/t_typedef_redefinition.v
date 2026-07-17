@@ -4,6 +4,9 @@
 // SPDX-FileCopyrightText: 2026 Ian Kilgore
 // SPDX-License-Identifier: CC0-1.0
 
+// Reproduces a C++ compile failure: sub_mod's struct definition is emitted
+// into both generated headers that use it, causing a redefinition error.
+
 module t (
     input clk
 );
@@ -12,7 +15,7 @@ module t (
   int cyc = 0;
 
   always_ff @(posedge clk) i <= ~i;
-  typedef_mod td_inst (.clk(clk), .in(i), .out(a));
+  sub_mod sub_inst (.clk(clk), .in(i), .out(a));
   wrap_mod wrap_inst (.clk(clk), .in(i), .out(b));
 
   always @(posedge clk) begin
@@ -26,28 +29,22 @@ module t (
 endmodule
 
 module wrap_mod (
-  input logic clk,
-  input logic in,
-  output logic out
+    input logic clk,
+    input logic in,
+    output logic out
 );
   /*verilator no_inline_module*/
-  typedef_mod td_inst (.clk(clk), .in(in), .out(out));
+  sub_mod sub_inst (.clk(clk), .in(in), .out(out));
 endmodule
 
-module typedef_mod (
-  input logic clk,
-  input logic in,
-  output logic out
+module sub_mod (
+    input logic clk,
+    input logic in,
+    output logic out
 );
-  typedef struct {
-    logic x;
-  } td_struct_t;
+  typedef struct {logic x;} td_struct_t;
 
-  td_struct_t r[1];
-  always_ff @(posedge clk) r[0].x <= in;
-
-  always_comb begin
-    out = '0;
-    for (int i = 0; i < 1; ++i) out = out + r[i].x;
-  end
+  td_struct_t r;
+  always_ff @(posedge clk) r.x <= in;
+  assign out = r.x;
 endmodule
